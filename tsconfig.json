@@ -1,0 +1,7 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.pagesRouter.json" },
+    { "path": "./tsconfig.appRouter.json" }
+  ]
+}

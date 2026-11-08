@@ -1,0 +1,381 @@
+## 16.4.7
+
+- **Works with i18next 27 and react-i18next 18** - the peer ranges already allowed them; the test suite, the type checks and all seven examples now run on i18next 27 and react-i18next 18, and the examples depend on them. next-i18next itself does not change: it always sets `fallbackLng`, so i18next 27's new default (`false` instead of `'dev'`) does not apply, and the Pages Router works with i18next 27 as before. One i18next 27 change shows in apps: an empty translation falls back like a missing one; set `returnEmptyString: true` in your i18next options to keep empty strings. The [i18next migration guide](https://www.i18next.com/misc/migration-guide#v26.x.x-to-v27.0.0) and the [react-i18next migration guide](https://react.i18next.com/latest/migrating-v17-to-v18) list everything else.
+- **Docs: `Trans` from `react-i18next` in Server Components** - with react-i18next 18, `import { Trans, IcuTrans } from 'react-i18next'` works in Server Components (its `react-server` export condition resolves to the variants without context); with react-i18next 17, keep importing them from `react-i18next/TransWithoutContext` and `react-i18next/IcuTransWithoutContext`.
+
+## 16.4.6
+
+- **Interpolation options no longer turn HTML escaping back on** - next-i18next turns i18next's escaping off (`interpolation: { escapeValue: false }`, React escapes text itself), but it set that as a whole `interpolation` object and spread the user's options over it. Any interpolation option (`prefix`/`suffix`, `defaultVariables`, ...) in `i18nextOptions` of the App Router server config or `I18nProvider` (also the ICU and MF2 providers), or in the Pages Router config, dropped it. i18next then escaped every value and React escaped it again, so `O'Brien & Co` rendered as `O&#39;Brien &amp; Co` and `1/2/2026` as `1&#x2F;2&#x2F;2026`. The user's interpolation options are now merged into the default, and `escapeValue: true` still turns escaping on. Apps that set interpolation options and render translations as HTML (`dangerouslySetInnerHTML`) lose that accidental escaping; set `escapeValue: true` to keep it. Thanks @nk-batman21 ([#2354](https://github.com/i18next/next-i18next/pull/2354))
+
+## 16.4.5
+
+- **App Router: no "uncached data" error in `next dev` with `cacheComponents: true` on the first request** - without inline `resources`, i18next's `init()` starts loading in a `setTimeout(load, 0)`, and Next.js counted that timer in the first render after the dev server started as uncached data, pointing at `await getT()` in the root layout. The shared server instance now inits with `initAsync: false`, so loading starts inside `init()` and the result is the same, one tick earlier. `next build` was never affected. Pass `i18nextOptions: { initAsync: true }` for the old behavior. Side effect: `i18next-fs-backend` passed via `use` reads with `readFileSync` when `initAsync` is `false`. i18next < 24 ignores the option. Thanks @rkrisztian ([#2353](https://github.com/i18next/next-i18next/discussions/2353))
+- **Docs: `cacheComponents` in `next dev`** - `reloadOnPrerender` re-reads the locale files on every render, so leave it off with `cacheComponents: true`. Reading translations with `fs` (an `fs`-based `resourceLoader`, or `public/locales` without one) is reported once per language in `next dev`. An `import()`-based `resourceLoader` is not, and `next build` is the check to trust.
+
+## 16.4.4
+
+- **App Router: routes that start with a language code are no longer taken for a locale** - with `localeInPath`, the proxy matched the first path segment like an `Accept-Language` value, which also accepts a prefix. With `supportedLngs: ['en', 'it']` a route like `/it-jobs` counted as the locale `it`, so it was served without a redirect and `app/[lng]` got `lng = 'it-jobs'` instead of `/en/it-jobs` being rendered (the same for `/my-account` with `my` supported, and a referer like that could set the cookie). The first segment now counts as a locale only if it is a supported code or shaped like a language tag (a 2-3 letter language with an optional region such as `en-gb` or `es-419`, or script and region such as `zh-Hant-TW`). A tag that resolves to a supported code is moved to that code: `/en-gb/about` redirects to `/en/about`, and with `nonExplicitSupportedLngs` and regional codes `/en/about` redirects to `/en-US/about`. `hideDefaultLocale` sends it to the clean URL, and `localeInPath: 'internal'` rewrites instead of redirecting. Anything else is a normal route and gets the locale prefix. Exact codes are served as before. Thanks @Pharex38 ([#2352](https://github.com/i18next/next-i18next/pull/2352))
+
+## 16.4.3
+
+- **App Router: a malformed `Referer` header no longer fails the request** - in `localeInPath` mode the proxy reads the `Referer` of a request to a locale path to persist the previous page's language, and passed the header straight to `new URL()`. A value that isn't an absolute URL (`Referer: not a url`, or a relative referer) threw `TypeError: Invalid URL` inside the middleware and the page failed with a 500. Browsers always send an absolute URL, but crawlers, proxies and hand-written clients don't have to. The proxy now ignores a referer it can't parse and serves the page as usual; a valid referer is handled as before. Thanks @Pharex38 ([#2351](https://github.com/i18next/next-i18next/pull/2351))
+
+## 16.4.2
+
+- **Pages Router: translations load on the server again with a custom `interpolation.prefix` / `suffix`** - `localeStructure` and the server `loadPath` are built from the configured prefix and suffix (e.g. `{lng}/{ns}`), but the file loader that replaced i18next-fs-backend in 16.0.0 only replaced `{{lng}}` and `{{ns}}`. It tried to read a literal `public/locales/{lng}/{ns}.json`, the error only showed with `debug: true`, and `serverSideTranslations` returned empty namespaces, so pages rendered the raw keys. The loader now uses the same prefix and suffix as the config. The default config and a function `localePath` are unchanged. Thanks @nk-batman21 ([#2350](https://github.com/i18next/next-i18next/pull/2350))
+
+## 16.4.1
+
+- **Docs: typed ICU and MF2 arguments** - the README section "ICU and MF2 with the App Router" now describes `parseInterpolation: 'icu'` / `'mf2'` (i18next 26.5.0): the options of `t` from `getT` and `useT` and the `values` of `IcuTrans` and `IcuTransWithoutContext` (react-i18next 17.1.0) are type-checked against the message's arguments, with the resources file from `npx i18next-cli types` for literal message types. `parseInterpolation: false` stays the setting for i18next 26.2.0 to 26.4.x. No code changes: `getT` and `useT` return i18next's `TFunction`, so they get the checks as is.
+- **Example `app-router-icu`** uses `parseInterpolation: 'icu'` with an `i18next.config.ts` and a generated `@types/resources.d.ts`.
+
+## 16.4.0
+
+- **App Router: ICU and MF2 without a `'use client'` wrapper** - `next-i18next/icu` and `next-i18next/mf2` export an `I18nProvider` with the same props as the one from `next-i18next/client`, with i18next-icu or i18next-mf2 registered on the client instance. Render it from the root layout and keep `use: [ICU]` (or `[MF2]`) in the server config. A Server Component can not pass a plugin class to a Client Component, so `<I18nProvider use={[ICU]}>` in a layout failed the build with "Functions cannot be passed directly to Client Components", and ICU needed a hand-written `'use client'` wrapper around the provider. Both plugins are optional peer dependencies: apps that never import these entry points do not resolve or bundle them. New README section "ICU and MF2 with the App Router" (setup, `getT`/`useT`, rich text with `IcuTransWithoutContext` from react-i18next 17.0.21 in Server Components, `parseInterpolation: false` for TypeScript, `extract.messageFormat` in i18next-cli 1.76.0) and a new example, [`app-router-icu`](examples/app-router-icu).
+
+## 16.3.2
+
+- **App Router: `useT` no longer re-renders on every URL change** — it called `useParams()` to sync the language from a `[lng]`/`[locale]` segment, and that subscribes the caller to the router's params, which Next replaces on every URL change, including `history.replaceState`/`pushState` and search-param updates. Every component using `useT` re-rendered each time, even in `localeInPath: false` mode where there is no such segment. The sync now lives in a single component inside `I18nProvider` that renders nothing, and `useT` is a typed `useTranslation`. [#2349](https://github.com/i18next/next-i18next/issues/2349)
+- **App Router: `useT` no longer breaks `next build` with `cacheComponents: true`** — that sync component only mounts in the browser, so `useParams()` is no longer called during server rendering. A `useT` caller on a route whose params are not all covered by `generateStaticParams` used to fail the prerender with "`useParams()` in a Client Component outside of `<Suspense>`"; it now renders into the static shell. [#2349](https://github.com/i18next/next-i18next/issues/2349)
+
+## 16.3.1
+
+- **App Router: changing the language on the client works with `i18nextOptions: { preload: [] }`** — with languages loaded on demand the server ships only the ones it has loaded, and `I18nProvider` pinned `supportedLngs` to whatever `resources` happened to contain, so i18next resolved every other language back to the fallback and client components stayed in the old language. `supportedLngs` is no longer derived from `resources` (pass the prop to restrict it), and each new `resources` prop is merged into the client instance — `router.refresh()` delivers the language the server just loaded — re-resolving the language when its bundles only just arrived. `useChangeLanguage` leaves that switch to the provider when the store holds nothing for the target language yet, so `i18n.resolvedLanguage` no longer lags a switch behind in client components (react-i18next 17.0.14 fixes the same staleness at its source, for the case where an app switches the language itself). [#2348](https://github.com/i18next/next-i18next/issues/2348)
+
+## 16.3.0
+
+- **App Router: `createServerI18next(config)`** — returns `{ getT, getResources, generateI18nStaticParams }` bound to the config, so the server API no longer depends on `initServerI18next` having run first in the same module instance. Create it once in an `i18n.server.ts` and import from there: every caller then imports the module that holds the config, and neither module evaluation order nor a second bundling layer (Route Handlers live in their own) can reach `getT` uninitialized. `initServerI18next` and the module-level functions keep working. [#2347](https://github.com/i18next/next-i18next/issues/2347)
+- **App Router: default server state is keyed on `globalThis`** — a second copy of `next-i18next/server` in the same process (another bundling layer, or the CJS build next to the ESM one) now sees the same `initServerI18next` call instead of throwing. The "not initialized" error also names the real requirement (before the first `getT()` in the process) and points at `createServerI18next`. [#2347](https://github.com/i18next/next-i18next/issues/2347)
+
+## 16.2.0
+
+- **App Router: the proxy only writes the language cookie when the language changed** — every response used to re-set the cookie: internal-mode rewrites on every request, the default and `hideDefaultLocale` redirects, and the referer branch on every navigation from a locale-prefixed page. Next merges a cookie set in middleware into the request's mutable cookies and treats any modified cookie as a revalidation, so every Server Action (its POST carries the page as referer) made the client router drop its cache and refetch the page, resetting remounted forms along the way. The write is now skipped when the incoming cookie already holds the resolved language. Trade-off: the cookie's `maxAge` is refreshed only on change. [#2346](https://github.com/i18next/next-i18next/issues/2346)
+- **App Router: `persistCookie` and `cookieOptions`** — `persistCookie: false` makes the proxy read the language cookie without ever writing it, for apps where another system owns it. `cookieOptions` (`domain`, `secure`, `sameSite`, `path`, `maxAge`) is applied on top of the defaults when the proxy does write, and `useChangeLanguage(cookieName?, cookieOptions?)` accepts the same options so both writers agree on the cookie's scope. [#2346](https://github.com/i18next/next-i18next/issues/2346)
+
+## 16.1.1
+
+- **App Router: proxy rewrites and redirects keep Next's `basePath`** — targets were built with `new URL(path, req.url)`, which drops the base path that Next keeps inside `req.nextUrl`, so with `basePath: '/nxt'` in `next.config` every locale redirect, and every rewrite in `hideDefaultLocale` and `'internal'` mode, landed outside the app and 404'd. Targets are now built from `req.nextUrl.clone()`, which also preserves `trailingSlash`, and the referer-based cookie persistence strips the base path before looking for a locale. The `basePath` option in the i18n config is unrelated: it is the route-folder prefix for mixed-router setups (`app/app-router/[lng]/…`). [#2345](https://github.com/i18next/next-i18next/issues/2345)
+- **App Router: `ssrBackend` prop on `I18nProvider`** — opt in to applying the backends from `use` during the server render pass as well. With `i18nextOptions: { react: { useSuspense: true } }` a namespace missing from `resources` suspends into the nearest `<Suspense>` boundary and streams in, so only the namespaces a route renders need to be in the HTML and the rest load on demand without hydration mismatches. Only for timer-free backends such as `i18next-resources-to-backend` with dynamic imports; the 16.0.11 reasoning still applies to http/locize backends. [#2345](https://github.com/i18next/next-i18next/issues/2345)
+
+## 16.1.0
+
+- **App Router: `localeInPath: 'internal'`** — a third routing mode for clean URLs *and* static prerendering per locale. Routes stay under `app/[lng]/`, but the proxy rewrites `/about` to `/{lng}/about` internally (cookie → Accept-Language → fallback), so the public URL never shows a locale while every locale is still prerendered via `generateStaticParams`. Explicit locale paths (`/de/about`) are served as-is, never redirected, so `<Link>` prefetches cannot flip the language cookie; switch languages with `useChangeLanguage()`. This is the mode for Next.js Cache Components (`cacheComponents: true`), where `localeInPath: false` cannot be used because reading `headers()`/`cookies()` makes every route dynamic. [#2345](https://github.com/i18next/next-i18next/issues/2345)
+- **App Router: `getT()` resolves the language from `next/root-params` first** (Next.js 16.3+) — root params are part of the route key, so unlike `headers()`/`cookies()` they do not opt a route out of prerendering. `await getT('home')` in a prerendered `[lng]` route no longer needs `{ lng }` threaded through every call site. Falls back to header/cookie detection on older Next.js, in Route Handlers and Server Actions (which have no root params), or when the root layout has no locale segment. [#2345](https://github.com/i18next/next-i18next/issues/2345)
+- **App Router: languages load on demand** — `getT()` now calls `loadLanguages(lng)` and checks `hasLoadedNamespace(ns, { lng })` for the requested language instead of the instance's own. The default still preloads every supported language; set `i18nextOptions: { preload: [] }` to load each language on its first request, keeping memory proportional to the locales actually served. [#2345](https://github.com/i18next/next-i18next/issues/2345)
+- **App Router: `localeParamName` option** — name of the locale route segment (default `'lng'`). `generateI18nStaticParams()` keys its params by it, so an `app/[locale]` segment now prerenders (previously the returned `{ lng }` silently matched nothing); root-param detection uses the same name. `generateI18nStaticParams<'locale'>()` narrows the return type. [#2345](https://github.com/i18next/next-i18next/issues/2345)
+
+## 16.0.11
+
+- **App Router: backends are no longer attached during SSR** — `I18nProvider` is a Client Component, but the App Router also renders it on the server, once per request, and its `useState` initializer therefore built a throwaway i18next instance in Node on every render. With a backend passed via `use`, that instance got a Node-side backend, and backends that refresh on a timer never let it go: `i18next-locize-backend` defaults `reloadInterval` to 1 hour whenever `window` is undefined, so every render left behind a live timer that kept refetching its namespaces forever. In production this showed up as a request floor that ratcheted upwards between deploys (measured on one app: ~90 requests/hour climbing to ~8,500 before a pod restart, ~190k downloads/day against a ~10k baseline). Backend plugins, including the built-in fetch loader, are now applied only in the browser, and `partialBundledLanguages` is off during the server pass, so SSR renders purely from `resources`. Non-backend plugins (detectors, post-processors) still apply in both passes.
+- **`getResources` accepts a language filter** — `getResources(i18n, namespaces?, languages?)`. The shared server instance preloads every supported language, so the default return value serialized all of them into the HTML; on a four-language app that was ~440 KB per page. Pass `[lng, fallbackLng]` to ship only what the client renders.
+
+## 16.0.10
+
+- **Pages Router: restore `saveMissing` via `.finally`** — the [#2344](https://github.com/i18next/next-i18next/issues/2344) fix re-enabled `saveMissing` in a `.then` on the `changeLanguage` promise; now uses `.finally` so a hypothetically rejected promise cannot leave `saveMissing` disabled for the rest of the session (defensive only: current i18next never rejects that promise)
+
+## 16.0.9
+
+- **Pages Router: no more `missingKeyHandler` false positives on locale change** — `appWithTranslation` reuses one i18next instance, so a client-side locale change renders at least once with the destination's resources loaded but the previous language still active (the `changeLanguage` call runs in a layout effect). With `saveMissing: true`, keys absent from the previous language were reported as missing during that transitional render even though they exist in the destination locale. `saveMissing` is now suspended while the language handoff is pending and restored once `changeLanguage` completes. [#2344](https://github.com/i18next/next-i18next/issues/2344)
+
+## 16.0.8
+
+- **Pages Router: self-diagnosing `serverSideTranslations` error** — the "Initial locale argument was not passed into serverSideTranslations" error now names its two common causes (missing `i18n` section in `next.config.js`; pages rendered outside Next.js locale routing such as custom 404/500 or `output: 'export'`) and shows the explicit-locale fix inline.
+- **CI: weekly Next.js compatibility workflow** — builds and e2e-tests all example apps against `next@latest` and `next@canary` on a weekly schedule (plus manual dispatch), so upstream Next.js regressions like the 13.5.4 bundling breakage ([#2214](https://github.com/i18next/next-i18next/issues/2214)) surface within days instead of via user reports.
+
+## 16.0.7
+
+- **Pages Router: fix duplicate `i18next` in client bundles** — v16 shipped the Pages Router as CJS-only, which forced bundlers to load `i18next` via its `require` condition (`i18next/dist/cjs`) while user code loaded it via the `import` condition (`i18next/dist/esm`), producing two copies of i18next in the same bundle. The Pages Router now builds dual ESM + CJS outputs, and the `./pages` and `./pages/serverSideTranslations` exports declare matching `import`/`require` conditions. The server-only filesystem branch of `createConfig` has been extracted into a separate `serverSideConfig` module (injected via hook by `serverSideTranslations`) so `createConfig` no longer pulls Node built-ins into client bundles. Note: `appWithTranslation` no longer re-runs the server-side validation/preload during SSR — that work happens once, up-front, inside `serverSideTranslations` (in practice a no-op since `appWithTranslation` uses the browser client with pre-loaded resources). [#2342](https://github.com/i18next/next-i18next/issues/2342)
+
+## 16.0.6
+
+- **Pages Router: `reloadOnPrerender` now actually reloads** — the option was previously calling `reloadResources()` on the browser-side i18next instance returned by `appWithTranslation` (which has no FS backend and is often `null` during `getStaticProps`/`getServerSideProps`). It now reloads on the disk-backed node-side instance, scoped to exactly the locales × namespaces being shipped, so edits to locale files appear without restarting `next dev`. Gated behind `NODE_ENV !== 'production'` to keep custom HTTP/locize/chained backends from being refetched on every prerender call. [#2123](https://github.com/i18next/next-i18next/issues/2123)
+- **App Router: `reloadOnPrerender` is now wired up** — previously declared in the config types but never consumed. Same dev-only semantics as Pages Router: refetches translations from the configured backend (default FS or `use`-provided custom backend) before each render in development, deduplicated across `getT` calls within a single render via React's `cache()`. No effect in production builds. Note: when using a dynamic `import()`-based `resourceLoader`, hot-reload is bundler-dependent and may stall after the first edit because Turbopack/Webpack cache resolved JSON modules across HMR cycles — see the README "Dev tip" for the dev/prod-split pattern that gives full hot-reload.
+
+## 16.0.5
+
+- **Pages Router: export missing types from `next-i18next/pages`** — `TFunction`, `I18n`, `WithTranslation`, `WithTranslationHocType`, and `UseTranslation` types are now properly re-exported, matching the v15 API surface [#2339](https://github.com/i18next/next-i18next/issues/2339)
+
+## 16.0.4
+
+- **TypeScript compatibility with i18next v26** — fixed type error in Pages Router `createConfig` where i18next v26's readonly `preload` type was incompatible with the internal config type
+
+## 16.0.3
+
+- **New `hideDefaultLocale` option (App Router)** — when enabled, the default language is served without a URL prefix (`/about` instead of `/en/about`). Non-default locales keep their prefix (`/de/about`). Explicit default-locale paths (`/en/about`) are automatically redirected to the clean URL. Works with `basePath` too. [#2338](https://github.com/i18next/next-i18next/issues/2338)
+
+## 16.0.2
+
+- **Serverless/Vercel: better error when `public/locales/` is not available at runtime** — the default filesystem backend now catches read failures and shows a clear error message explaining the serverless limitation with a `resourceLoader` code example [#2337](https://github.com/i18next/next-i18next/issues/2337)
+- **`partialBundledLanguages` + `resources`** — when both `resources` and `partialBundledLanguages: true` are provided, the default backend is now correctly kept so it can load additional namespaces not included in the pre-loaded resources
+
+## 16.0.1
+
+- **App Router: `config.resources` now works on the server** — `resources` was typed and documented but ignored at runtime by `initServerI18next` / `getT`. The resource backend is now skipped when `resources` is provided, and the pre-loaded translations are passed directly to `i18next.init()`. [#2336](https://github.com/i18next/next-i18next/issues/2336)
+
+## 16.0.0
+
+### BREAKING CHANGES
+
+- **Import paths changed for Pages Router**: `next-i18next` → `next-i18next/pages`, `next-i18next/serverSideTranslations` → `next-i18next/pages/serverSideTranslations`
+- **Root export is now App Router**: The default `next-i18next` import now exports App Router utilities (`defineConfig`, `normalizeConfig`, `I18nConfig`). Pages Router users must update to `next-i18next/pages`.
+- **Removed `i18next-fs-backend` dependency**: Pages Router server-side loading now uses `i18next-resources-to-backend` with `fs.readFileSync` internally. No change needed for users — the behavior is identical.
+
+### New Features
+
+- **App Router support** — first-class support for Next.js App Router with Server Components and Client Components
+  - `getT(ns?, options?)` — async translation function for Server Components, layouts, and `generateMetadata`. Returns namespace-typed `{ t, i18n, lng }`.
+  - `useT(ns?, options?)` — translation hook for Client Components. Reads language from `[lng]` or `[locale]` URL params automatically.
+  - `I18nProvider` — client-side provider for hydrating server-loaded translations. Supports custom backends via `use` prop.
+  - `initServerI18next(config)` — one-time server configuration setup
+  - `getResources(i18n, namespaces?)` — extract loaded resources for client hydration
+  - `generateI18nStaticParams()` — helper for `generateStaticParams`
+- **Proxy support (Next.js 16+)** — `createProxy()` from `next-i18next/proxy` for the new `proxy.ts` file convention. `createMiddleware()` from `next-i18next/middleware` remains available for Next.js 14/15.
+  - Edge-safe language detection (cookie → Accept-Language → fallback)
+  - Locale-in-path routing with automatic redirects
+  - Custom header for Server Component language detection
+- **`basePath` option** — scope the proxy to a URL prefix (e.g., `/app-router`) for mixed App Router + Pages Router setups
+- **No-locale-path mode** — `localeInPath: false` for cookie-based language without URL prefixes. Use `useChangeLanguage()` hook for language switching.
+- **`defineConfig()`** — type-safe configuration helper
+- **Custom backend support** — pass any i18next backend plugin (http-backend, locize-backend, chained-backend) via the `use` config option. The default resource loader is skipped automatically when a custom backend is provided.
+- **`resourceLoader` option** — custom async loader function `(lng, ns) => Promise<object>` for dynamic imports or custom loading logic
+- **Server-side singleton caching** — translations loaded once and reused across requests. Custom backends benefit from this — no re-fetching per request.
+- **`nonExplicitSupportedLngs`** — match `'en'` to `'en-US'` etc. in language detection
+
+### Pages Router
+
+- All existing v15 APIs preserved under `next-i18next/pages` and `next-i18next/pages/serverSideTranslations`
+- `appWithTranslation`, `useTranslation`, `Trans`, `serverSideTranslations` — unchanged behavior
+- Defensive `.filter(Boolean)` on `config.use` arrays to handle CJS/ESM interop edge cases with Turbopack
+
+## 15.4.3
+
+- types: fix: WithTranslation type from next-i18next is not generic (TS error) [#2329](https://github.com/i18next/next-i18next/issues/2329)
+
+## 15.4.2
+
+- types: re-add @types/hoist-non-react-statics to dependencies [#2316](https://github.com/i18next/next-i18next/pull/2316)
+
+## 15.4.1
+
+- Move @types/hoist-non-react-statics to devDependencies [#2310](https://github.com/i18next/next-i18next/pull/2310)
+
+## 15.4.0
+
+- support i18next v24
+
+## 15.3.1
+
+- update some i18next dependencies to address [#2288](https://github.com/i18next/next-i18next/issues/2288)
+
+## 15.3.0
+
+- Only overwrite ns config if it provided [#2270](https://github.com/i18next/next-i18next/pull/2270)
+
+## 15.2.0
+
+- add possibility to pass resources directly via config and set localePath to null
+
+## 15.1.2
+
+- fix: Install error with react-i18next v14 [#2248](https://github.com/i18next/next-i18next/issues/2248)
+
+## 15.1.1
+
+- optimize/fix last change for turbo
+
+## 15.1.0
+
+- try to fix for turbo [#2222](https://github.com/i18next/next-i18next/issues/2222)
+
+## 15.0.0
+
+- refactor: reuse existing i18next instance [#2226](https://github.com/i18next/next-i18next/pull/2226)
+  -> If you use client side pages (not lazy loading translations), like described [here](https://github.com/i18next/i18next-http-backend/tree/master/example/next#4-setup-your-client-rendered-pagescomponents), make sure you set the `partialBundledLanguages` option to true, like [here](https://github.com/i18next/i18next-http-backend/tree/master/example/next#4-setup-your-client-rendered-pagescomponents).
+
+## 14.0.3
+
+- fix: correct namespacesRequired type in serverSideTranslations [#2203](https://github.com/i18next/next-i18next/pull/2201)
+
+## 14.0.2
+
+- try to fix namespacesRequired in serverSideTranslations is not type-safe anymore [#2201](https://github.com/i18next/next-i18next/issues/2201)
+
+## 14.0.0
+
+- requires i18next >= v23.0.1
+- requires react-i18next >= v13.0.0
+
+### Breaking changes
+
+[i18next 23.0.0](https://github.com/i18next/i18next/releases/tag/v23.0.0) dropped support for older browsers.
+From nextjs 13, you can use the [transpilePackages](https://nextjs.org/docs/app/api-reference/next-config-js/transpilePackages)
+to avoid issues.
+
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  transpilePackages: ['i18next'],
+}
+module.exports = nextConfig
+```
+
+## 13.3.0
+
+- using a custom backend on server side should also lazy load the passed namespaces
+
+## 13.2.2
+
+- pageProps may be undefined on strange setups [#2109](https://github.com/i18next/next-i18next/issues/2109)"
+
+## 13.2.1
+
+- types: fix serverSideTranslations args [#2104](https://github.com/i18next/next-i18next/pull/2104)"
+
+## 13.2.0
+
+- types: Update serverSideTranslation args type [#2097](https://github.com/i18next/next-i18next/pull/2097)"
+
+## 13.1.6
+
+- fix: allow user provided affixes to be used without providing localeStructure [#2100](https://github.com/i18next/next-i18next/pull/2100)"
+
+## 13.1.5
+
+- [#2089](https://github.com/i18next/next-i18next/pull/2089), more stable impelementation of "feat(server-side): custom default config path [#2084](https://github.com/i18next/next-i18next/pull/2084)"
+
+## 13.1.4
+
+- revert #2084
+
+## 13.1.3
+
+- another code snippet for #2084 to try to fix for dynamic pages
+
+## 13.1.2
+
+- different code snippet for #2084 to try to fix for dynamic pages
+
+## 13.1.1
+
+- log config path if no config found
+
+## 13.1.0
+
+- feat(server-side): custom default config path [#2084](https://github.com/i18next/next-i18next/pull/2084)
+
+## 13.0.3
+
+- Error if custom localeStructure provided, but no ns option defined.
+
+## 13.0.2
+
+### Fix
+
+- Types: DefaultNamespace import, see [#2061](https://github.com/i18next/next-i18next/pull/2061).
+
+## 13.0.1
+
+### Fix
+
+- Fix missing `i18n.localeDetection` in UserConfig, see [#2057](https://github.com/i18next/next-i18next/pull/2057).
+- Update examples to latest i18next in [#2058](https://github.com/i18next/next-i18next/pull/2058)
+
+**Caution**
+
+If you're experiencing typecheck errors regarding keys: ensure `i18next` is at least `^22.4.3` in your
+package.json (then run install), see [#2058](https://github.com/i18next/next-i18next/pull/2058).
+
+## 13.0.0
+
+The v13.0.0 release is a major version to improve stability and general experience.
+It comes with 2 easy changes related to installation. Existing code shouldn't be impacted.
+Details can be found in the [UPGRADING.md](https://github.com/i18next/next-i18next/blob/master/UPGRADING.md#version-1300) document.
+
+### Breaking changes
+
+- [react-i18next](https://github.com/i18next/react-i18next) and [i18next](https://github.com/i18next/i18next)
+  have been moved to peer-dependencies. They must be installed
+  in your app ([#1966](https://github.com/i18next/next-i18next/pull/1966))
+
+  ```bash
+  # Add react-i18next > 12.0.0 and i18next > 22.0.4 to your app dependencies
+  npm install react-i18next i18next --save  # NPM
+  yarn add react-i18next i18next            # Yarn
+  pnpm add react-i18next i18next --save     # PNPM
+  ```
+
+  This might solve issues with duplicates and multiple i18n context instances.
+  If you encounter any issue, please read the [Troubleshoot](https://github.com/i18next/next-i18next/blob/master/TROUBLESHOOT.md) doc
+  before posting an issue.
+
+- Types augmentations are now handled by i18next instead of react-i18next ([#1997](https://github.com/i18next/next-i18next/pull/1997)).
+  See the upgrade [document here](https://github.com/i18next/next-i18next/blob/master/UPGRADING.md#keys-typings).
+
+### New
+
+- Support for NextJs 13 (excluding new experimental layout / rsc)
+- Upgrade to [i18next v22](https://github.com/i18next/i18next/releases) and react-i18next v12, see [#1966](https://github.com/i18next/next-i18next/pull/1966)
+- Support for node 18 lts [#2017](https://github.com/i18next/next-i18next/pull/2017)
+
+### Fix
+
+- Fix types for appWithTranslation [#1987](https://github.com/i18next/next-i18next/pull/1987)
+
+### New minimum versions
+
+We've dropped support for nextjs < 12.0.0 / react < 17.0.2 ([#1983](https://github.com/i18next/next-i18next/pull/1983))
+and node < 14 ([#1974](https://github.com/i18next/next-i18next/pull/1974)).
+
+## 12.1.0
+
+- fix: appWithTranslation re-renders \_app when the locale is changed (#1954)
+- feat: introduce onPreInitI18next option (#1960)
+
+## 12.0.1
+
+- fix: fallbackLng if namespaces are undefined (#1943 closes #1941)
+
+## 12.0.0
+
+**Why a major version?**
+The following changes could lead to more languages being loaded, which could increase the page size.
+
+- feat: improve fallback language handling (#1927)
+- feat: add support for nonExplicitSupportedLngs (#1930)
+
+## 11.3.0
+
+- feat: introduce extraLocales (#1916)
+
+## 11.2.2
+
+- fix: pass namespaces to the client also for custom backends (#1913)
+
+## 11.2.1
+
+- fix: pass namespaces to the client (#1912 closes #1839)
+
+## 11.2.0
+
+- feat: support nested namespace structure (#1911)
+
+## 11.1.1
+
+- fix: remove postinstall script
+
+## 11.1.0
+
+- first release with new project ownership
+- update most dependencies
+- update docs and example
+- feat: support default locale by ignoring it (#1679)
+
+## 11.0.0
+
+**Features:**
+
+- Allow client side translation loading (8132efd)
+
+**Documentation:**
+
+- Link to `react-i18next` config options (422a0f3)
